@@ -248,7 +248,7 @@ function editDebt(i){var d=cur.debts[i];
     check:function(v){return dupForDebt({name:v.name,type:d.type});},apply:function(v){cur.debts[i]={type:d.type,name:v.name,owed:v.owed,apr:v.apr,aprGuess:(d.aprGuess===true&&v.apr===d.apr),payment:v.payment,prepayExtra:d.prepayExtra||0,prepayLump:d.prepayLump||0};}});}
 
 /* ---------- home ---------- */
-var VERSION='1.0';
+var VERSION='1.1';
 function home(){
   hist=[];view=null;cur=null;editSnap=null;app.textContent='';
   app.append(h('h1',{text:"Simple Budget"}),h('p',{class:'hint',text:'Plan what comes in and what goes out. Your budgets are saved only on this phone.'}),h('p',{class:'hint',text:'Use your own phone so your budgets stay private.'}));
@@ -510,6 +510,42 @@ function taxResult(){var t=cur.tax,c=taxCalc(t);var owe=c.diff>0,sn=stateName(t.
     h('button',{class:'green',onclick:function(){if(mode==='edit')finishEdit();else adv(0);},text:'Done'}),
     h('button',{class:'ghost',onclick:back,text:'Change my numbers'})));}
 
+/* ---------- export to Excel / CSV ---------- */
+function csvCell(v){if(typeof v==='number')return (Math.round(v*100)/100).toFixed(2);
+  var t=String(v==null?'':v);if(/^[=+\-@\t\r]/.test(t))t="'"+t;
+  return /[",\r\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t;}
+function csvText(rows){return '﻿'+rows.map(function(r){return r.map(csvCell).join(',');}).join('\r\n')+'\r\n';}
+function usDate(d){var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(d||'');return m?m[2]+'/'+m[3]+'/'+m[1]:(d||'');}
+function csvSpending(b){var rows=[['Date','Description','Amount']];
+  (b.spent||[]).slice().sort(function(a,c){return a.date<c.date?-1:(a.date>c.date?1:0);}).forEach(function(x){rows.push([usDate(x.date),x.cat,-x.amount]);});return rows;}
+function csvBudget(b){var c=compute(b),rows=[['Type','Name','How often','Amount','Per month']];
+  b.incomes.forEach(function(i){var f=freqOf(i.freq);rows.push(['Income',i.name,f.label,i.amount,i.amount*f.mult]);});
+  c.items.forEach(function(i){rows.push(['Expense',i.name,'Monthly',-i.amt,-i.amt]);});
+  rows.push(['Total','Money coming in','','',c.inc]);rows.push(['Total','Money going out','','',-c.exp]);rows.push(['Total','Left over (negative = over budget)','','',c.inc-c.exp]);return rows;}
+function csvDebts(b){var rows=[['Name','Type','Total owed','APR %','Rate is an estimate','Monthly payment','Months to pay off','Total interest']];
+  b.debts.forEach(function(d){var a=d.owed>0?amortize(d.owed,d.apr,d.payment):{months:0,interest:0};
+    rows.push([d.name,d.type,d.owed,d.apr,d.aprGuess?'Yes':'No',d.payment,a?String(a.months):'Never at this payment',a?a.interest:'']);});return rows;}
+function csvTax(b){var t=b.tax;if(!t)return null;var c=taxCalc(t);
+  return [['Item','Value'],['Filing status',statusName(t.status)],['State',stateName(t.state)],['Pay stub date',usDate(t.date)],['Pay how often',freqOf(t.freq).label],
+    ['Gross pay (this check)',t.gross],['Net pay (this check)',t.net],['Federal tax (this check)',t.fedTax],['Federal tax to date',t.fedYtd],['State tax (this check)',t.stTax],['State tax to date',t.stYtd],
+    ['Other taxable income (year)',t.other||0],['Mortgage interest (year)',t.mortgage||0],['Property tax (year)',t.propTax||0],
+    ['Estimated pay for the year',c.inc],['Estimated federal tax owed',c.fed],['Federal tax withheld by year end',c.pf],['Estimated state tax owed',c.kind==='ca'?c.st:'Not worked out for this state'],['State tax withheld by year end',c.ps],
+    ['Estimate: owe (positive) or get back (negative)',c.diff],['Note','Estimate only, not tax advice']];}
+function saveCsv(name,rows,status){try{var bl=new Blob([csvText(rows)],{type:'text/csv;charset=utf-8'});var u=URL.createObjectURL(bl);var a=document.createElement('a');a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u);},2000);status.textContent='Saved '+name+'. If nothing downloaded, your browser blocked it.';}catch(e){status.textContent='Download is blocked here.';}}
+function exportPick(){
+  app.append(h('h1',{text:'Save to Excel'}),h('p',{class:'hint',text:'Which budget do you want to save?'}),
+    h('div',{class:'stack'},db.length?db.map(function(b){return h('button',{class:'choice',onclick:function(){go(exportScreen,b);},text:b.name||'Budget'});}):h('p',{class:'hint',text:'No budgets yet.'}),h('button',{class:'ghost',onclick:back,text:'Back'})));}
+function exportScreen(b){var status=h('p',{class:'note',role:'status'});
+  var safe=(b.name||'budget').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-|-$/g,'')||'budget';
+  function row(title,hint,file,rows){return h('div',{class:'card'},h('h2',{text:title}),h('p',{class:'hint',text:hint}),
+    rows?h('button',{onclick:function(){saveCsv(file,rows,status);},text:'Save '+file}):h('p',{class:'hint',text:'Nothing to save yet.'}));}
+  app.append(h('h1',{text:'Save to Excel'}),h('p',{class:'hint',text:'These are CSV files (comma-separated values). Excel, Numbers and Google Sheets open them. Budget: '+(b.name||'')}),
+    row('Spending','For accounting. Columns: Date, Description, Amount. Spending is negative, so you can import it as a bank file into most basic accounting systems.',safe+'-spending.csv',(b.spent&&b.spent.length)?csvSpending(b):null),
+    row('Budget','Your income, monthly expenses and what is left over.',safe+'-budget.csv',csvBudget(b)),
+    row('Debts','What you owe, the rate, and how long it takes to pay off.',safe+'-debts.csv',b.debts.length?csvDebts(b):null),
+    row('Income tax check','The numbers from your pay stub and the estimate.',safe+'-income-tax.csv',csvTax(b)),
+    status,h('button',{class:'ghost',style:'width:100%',onclick:back,text:'Back'}));}
+
 /* ---------- spending tracker ---------- */
 function todayStr(){var d=new Date(),p=function(n){return (n<10?'0':'')+n;};return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());}
 function planFor(cat){for(var i=0;i<cur.expenses.length;i++)if(cur.expenses[i].name===cat)return cur.expenses[i].amount;
@@ -541,7 +577,7 @@ function trackHome(){var mo=todayStr().slice(0,7),rows=[];
   app.append(h('h1',{text:'Spending tracker'}));
   app.append(h('div',{class:'card'},h('p',{class:'eyebrow',text:'This month'}),
     rows.length?h('div',{},rows.map(function(r){var left=r.p-r.sp;return h('div',{class:'money'},h('span',{text:r.c+': spent '+money(r.sp)+' of '+money(r.p)}),h('b',{text:left>=0?money(left)+' left':money(-left)+' over'}));})):h('p',{class:'hint',text:'Nothing tracked yet. Add what you spend and I will show what is left.'}),
-    h('div',{class:'stack',style:'margin-top:12px'},h('button',{onclick:function(){go(trackAdd);},text:'Add something I spent'}))));
+    h('div',{class:'stack',style:'margin-top:12px'},h('button',{onclick:function(){go(trackAdd);},text:'Add something I spent'}),h('button',{class:'ghost',onclick:function(){go(exportScreen,cur);},text:'Save to Excel / CSV'}))));
   var sc=sugCard();if(sc)app.append(sc);
   var recent=cur.spent.slice(-8).reverse();
   if(recent.length)app.append(h('div',{class:'card'},h('p',{class:'eyebrow',text:'Latest'}),h('ul',{class:'list'},recent.map(function(x){
@@ -698,6 +734,7 @@ function backupScreen(){
     h('div',{class:'card'},h('h2',{text:'Save a backup'}),
       h('div',{class:'stack'},
         h('button',{onclick:function(){try{var bl=new Blob([backupJson()],{type:'application/json'});var u=URL.createObjectURL(bl);var a=document.createElement('a');a.href=u;a.download='simple-budget-backup.json';document.body.append(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u);},2000);status.textContent='If a file did not download, use Copy backup text instead.';}catch(e){status.textContent='Download is blocked here. Use Copy backup text instead.';}},text:'Save a file to my phone'}),
+        h('button',{class:'ghost',onclick:function(){go(exportPick);},text:'Save to Excel / CSV'}),
         h('button',{class:'ghost',onclick:function(){out.focus();out.select();var done=function(){status.textContent='Copied. Paste it into the Notes app to keep it.';};
           if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(out.value).then(done,function(){status.textContent='Text is selected. Tap Copy in the pop-up.';});}else{status.textContent='Text is selected. Tap Copy in the pop-up.';}},text:'Copy backup text'}),
         out)),
