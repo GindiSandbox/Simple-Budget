@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex"></head><body><title>Junior's Budget</title>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex"></head><body><title>Simple Budget</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap">
 <style>
@@ -78,7 +78,7 @@ select{font:inherit;width:100%;min-height:58px;padding:12px 14px;border-radius:1
 <script>
 (function(){
 'use strict';
-var KEY='juniorBudget.v1';
+var KEY='simpleBudget.v1';
 var FREQ=[{k:'week',label:'Every week',mult:52/12},{k:'2week',label:'Every 2 weeks',mult:26/12},{k:'semi',label:'Twice a month',mult:2},{k:'month',label:'Once a month',mult:1}];
 var CATS=[['Rent or room','What you pay to live where you live.'],['Food and groceries','Groceries and eating out.'],['Electric','Your electric bill.'],['Gas (home)','Natural gas or propane for heating, hot water or cooking. Car gas comes later.'],['Water','Your water and sewer bill.'],['Trash','Trash and garbage pickup.'],['Phone','Your phone bill.'],['Internet','Your home internet bill.'],['Cable or streaming','Cable TV and streaming services.'],['Getting around','Bus, rides, parking, bike or scooter costs. Car costs come next.'],['Car gas','Gas or fuel for your car.'],['Car insurance','Your car insurance.'],['Car maintenance','Oil changes, tires, repairs, registration.'],['Fun','Movies, games, hanging out.'],['Savings','Money you put away on purpose.'],['Other','Anything else you pay for each month.']];
 var CARS=['Car gas','Car insurance','Car maintenance'];
@@ -108,7 +108,7 @@ function monthsText(m){if(m>1200)return 'more than 100 years';var y=Math.floor(m
   if(y===0)return pl(m,'month');if(mo===0)return pl(y,'year');return pl(y,'year')+', '+pl(mo,'month');}
 
 /* ---------- data ---------- */
-function blank(name){return {hasCar:null,tax:null,spent:[],id:uid(),name:name||'',created:new Date().toISOString().slice(0,10),incomes:[],
+function blank(name){return {hasCar:null,tax:null,spent:[],sugSeen:'',id:uid(),name:name||'',created:new Date().toISOString().slice(0,10),incomes:[],
   expenses:CATS.map(function(c){return {name:c[0],amount:0};}),extras:[],debts:[]};}
 function clean(b){
   if(!b||typeof b!=='object')return null;
@@ -120,7 +120,8 @@ function clean(b){
   out.expenses=CATS.map(function(c){var f=ex.filter(function(e){return e&&e.name===c[0];})[0];return {name:c[0],amount:f?num(f.amount):0};});
   out.extras=arr(b.extras).map(function(e){e=e||{};return {name:str(e.name,60),amount:num(e.amount)};});
   out.debts=arr(b.debts).map(function(d){d=d||{};return {type:(DTYPES.indexOf(d.type)>=0?d.type:'Other loan'),name:str(d.name,60),owed:num(d.owed),apr:num(d.apr),payment:num(d.payment),prepayExtra:num(d.prepayExtra),prepayLump:num(d.prepayLump),aprGuess:d.aprGuess===true};});
-  var t=b.tax;out.tax=(t&&typeof t==='object')?{date:str(t.date,10),gross:num(t.gross),net:num(t.net),fedTax:num(t.fedTax),fedYtd:num(t.fedYtd),stTax:num(t.stTax),stYtd:num(t.stYtd),freq:freqOf(t.freq).k,other:num(t.other)}:null;
+  var t=b.tax;out.tax=(t&&typeof t==='object')?{date:str(t.date,10),gross:num(t.gross),net:num(t.net),fedTax:num(t.fedTax),fedYtd:num(t.fedYtd),stTax:num(t.stTax),stYtd:num(t.stYtd),freq:freqOf(t.freq).k,other:num(t.other),status:(['single','mfj','mfs','hoh'].indexOf(t.status)>=0?t.status:'single'),state:(/^[A-Z]{2}$/.test(String(t.state||''))?t.state:'CA'),mortgage:num(t.mortgage),propTax:num(t.propTax)}:null;
+  out.sugSeen=str(b.sugSeen,7);
   out.spent=Array.isArray(b.spent)?b.spent.slice(-1000).map(function(x){x=x||{};return {date:str(x.date,10),cat:str(x.cat,60),amount:num(x.amount)};}).filter(function(x){return x.cat&&x.amount>0;}):[];
   return out;}
 var db=[];var storageOk=true;
@@ -153,7 +154,10 @@ function debtNote(d){
 
 /* ---------- navigation ---------- */
 var cur=null,mode='new',hist=[],view=null,editSnap=null,draft={};
-function show(v){view=v;app.textContent='';v[0](v[1]);window.scrollTo(0,0);}
+function goBudget(){if(!cur||!cur.name)return;editSnap=null;upsert(cur);mode='edit';jump(result);}
+function show(v){view=v;app.textContent='';v[0](v[1]);
+  if(cur&&cur.name&&v[0]!==result&&v[0]!==home)app.append(h('div',{class:'stack',style:'margin-top:4px'},h('button',{type:'button',class:'ghost',onclick:goBudget,text:'Budget'})));
+  window.scrollTo(0,0);}
 function go(fn,arg){if(view)hist.push(view);show([fn,arg]);}
 function back(){var p=hist.pop();if(!p){home();return;}show(p);}
 function jump(fn,arg){hist=[];show([fn,arg]);}
@@ -201,10 +205,7 @@ function confirmScreen(o){
 function dupOpts(c,yesFn,skipFn){var o={text:c.text,warn:c.warn,yesLabel:c.yesLabel,yes:yesFn};
   if(c.sameLabel){o.sameLabel=c.sameLabel;o.same=function(){if(c.sameDo)c.sameDo();(c.skip?skipFn:yesFn)();};}
   return o;}
-function jobLimit(name){var n=String(name||'').toLowerCase();
-  if(/bus/.test(n)&&/(assistant|aide|monitor|attendant)/.test(n))return {label:'an assistant bus driver',max:40000,note:'about $40,000 a year'};
-  if(/bus\s*driver/.test(n))return {label:'a bus driver',max:29*2080,note:'about $29 an hour, or '+money(29*2080)+' a year'};
-  return null;}
+function jobLimit(name){return null;}
 function incomeCheck(it){
   var f=freqOf(it.freq),yr=it.amount*f.mult*12,gy=(it.gross>0?it.gross:it.amount)*f.mult*12;var lim=jobLimit(it.name);
   var t=money(it.amount)+' '+f.label.toLowerCase()+' adds up to about '+money(yr)+' a year take-home'+(it.gross>0?' ('+money(gy)+' before taxes)':'')+'.';
@@ -250,7 +251,7 @@ function editDebt(i){var d=cur.debts[i];
 var VERSION='1.0';
 function home(){
   hist=[];view=null;cur=null;editSnap=null;app.textContent='';
-  app.append(h('h1',{text:"Junior's Budget"}),h('p',{class:'hint',text:'Plan what comes in and what goes out. Your budgets are saved only on this phone.'}),h('p',{class:'hint',text:'Use your own phone so your budgets stay private.'}));
+  app.append(h('h1',{text:"Simple Budget"}),h('p',{class:'hint',text:'Plan what comes in and what goes out. Your budgets are saved only on this phone.'}),h('p',{class:'hint',text:'Use your own phone so your budgets stay private.'}));
   if(!storageOk)app.append(h('div',{class:'card warn'},h('p',{text:'This phone is not letting the page save. Use Save a backup so you do not lose your budgets.'})));
   var list=h('div',{class:'stack'});
   db.forEach(function(b){list.append(budgetRow(b));});
@@ -378,11 +379,28 @@ function debtMore(){
   app.append(h('div',{class:'card'},h('p',{class:'eyebrow',text:'Debts'}),h('h2',{text:cur.debts.length?'Your debts':'Any debt?'}),
     cur.debts.length?h('ul',{class:'list'},cur.debts.map(function(d,k){return rowEl(d.name+': owe '+money(d.owed)+', '+d.apr+'% APR'+(d.aprGuess?' (estimate)':'')+', pay '+money(d.payment)+' a month',function(){editDebt(k);});})):h('p',{class:'hint',text:'Do you owe money on anything? (loans, credit cards, phone payments)'}),
     h('div',{class:'stack'},
-      h('button',{onclick:function(){draft.base=baseFor(debtMore);draft.d={};go(dType);},text:cur.debts.length?'Add another':'Yes, add a debt'}),
+      h('button',{onclick:function(){draft.base=baseFor(debtMore);draft.d={};draft.queue=[];go(dPick);},text:cur.debts.length?'Add more debts':'Yes, add debts'}),
       h('button',{class:'green',onclick:finishAll,text:cur.debts.length?"I'm done with debts":'No, show my budget'}),
       cur.debts.length?h('button',{class:'ghost',onclick:function(){cur.debts.pop();show([debtMore]);},text:'Remove last one'}):null,
       h('button',{class:'ghost',onclick:back,text:'Back'}))));}
 function defaultDebtName(t){if(t==='Other loan')return '';var n=cur.debts.filter(function(x){return x.type===t;}).length+1;return (n===1&&t!=='Credit card')?t:t+' '+n;}
+function dPick(){draft.qStarted=false;var err=h('div',{class:'err',role:'alert'}),boxes={},cnts={};
+  var rows=DTYPES.map(function(t){var id='dp-'+t.replace(/\s/g,'');
+    var cb=h('input',{type:'checkbox',id:id,style:'width:26px;height:26px;flex:none'});boxes[t]=cb;
+    var sel=h('select',{id:id+'-n','aria-label':'How many '+t.toLowerCase()+'s',style:'width:auto;margin-left:auto'},[1,2,3,4,5,6,7,8].map(function(n){return h('option',{value:n,text:n+(n===1?' of them':' of them')});}));
+    cnts[t]=sel;sel.style.display='none';cb.onchange=function(){sel.style.display=cb.checked?'':'none';};
+    return h('div',{class:'fld',style:'display:flex;align-items:center;gap:12px'},cb,h('label',{for:id,style:'margin:0',text:t}),sel);});
+  var form=h('form',{class:'card',onsubmit:function(ev){ev.preventDefault();var q=[];
+    DTYPES.forEach(function(t){if(boxes[t].checked){var n=Number(cnts[t].value)||1;for(var k=0;k<n;k++)q.push(t);}});
+    if(!q.length){err.textContent='Tick at least one kind of debt.';return;}
+    draft.queue=q;dNext();}},
+    h('p',{class:'eyebrow',text:'Debts'}),h('h2',{text:'Which debts do you have?'}),h('p',{class:'hint',text:'Tick every kind you have. If you have more than one of a kind, pick how many. Then I will ask about each one.'}),
+    rows,err,h('div',{class:'row'},h('button',{type:'button',class:'ghost',onclick:back,text:'Back'}),h('button',{type:'submit',text:'Next'})));
+  app.append(form);}
+function dNext(){
+  if(draft.queue&&draft.queue.length){var t=draft.queue.shift();draft.d={type:t,name:defaultDebtName(t)};
+    if(draft.qStarted){hist.length=draft.base;show([dName]);}else{draft.qStarted=true;go(dName);}}
+  else{draft.qStarted=false;finishItem(debtMore,draft.base);}}
 function dType(){
   app.append(h('div',{class:'card'},h('p',{class:'eyebrow',text:'Debts'}),h('h2',{text:'What kind of debt is it?'}),h('p',{class:'hint',text:'You can add more than one, like several credit cards.'}),
     h('div',{class:'stack'},DTYPES.map(function(t){return h('button',{class:'choice',onclick:function(){draft.d={type:t,name:defaultDebtName(t)};go(dName);},text:t});}),h('button',{class:'ghost',onclick:back,text:'Back'}))));}
@@ -395,68 +413,98 @@ function dApr(){var i=numIn('f-da',draft.d.apr,'Example: 24');var gr=GUESS[draft
   ask({guess:gr?{rate:gr,fn:function(){draft.d.apr=gr;draft.d.aprGuess=true;go(dPay);}}:null,eyebrow:'Debts',title:'Interest rate (APR)?',hint:'APR (annual percentage rate) is the yearly cost of borrowing, as a percent. Look on your statement or ask a trusted adult. Type 0 if none.',input:i,label:'Percent',onNext:function(v){var n=parseNum(v===''?'0':v);if(n===null||n>1000)return 'Type just a number, like 24 or 0.';draft.d.apr=n;draft.d.aprGuess=false;go(dPay);}});}
 function dPay(){var i=numIn('f-dp',draft.d.payment,'Example: 50');
   ask({eyebrow:'Debts',title:'Monthly payment?',hint:draft.d.type==='Credit card'?'How much do you pay on this card each month? Paying more than the minimum saves a lot of interest.':'How much do you pay on this each month?',input:i,label:'Dollars per month',onNext:function(v){var n=parseNum(v);if(n===null)return 'Type just numbers, like 50 or 50.50.';
-    var it={type:draft.d.type||'Other loan',name:draft.d.name,owed:draft.d.owed,apr:draft.d.apr,aprGuess:draft.d.aprGuess===true,payment:n,prepayExtra:0,prepayLump:0},c=dupForDebt(it);function fin(){cur.debts.push(it);finishItem(debtMore,draft.base);}if(c)go(confirmScreen,dupOpts(c,fin));else fin();}});}
+    var it={type:draft.d.type||'Other loan',name:draft.d.name,owed:draft.d.owed,apr:draft.d.apr,aprGuess:draft.d.aprGuess===true,payment:n,prepayExtra:0,prepayLump:0},c=dupForDebt(it);function fin(){cur.debts.push(it);dNext();}if(c)go(confirmScreen,dupOpts(c,fin));else fin();}});}
 function finishAll(){if(mode==='edit')finishEdit();else{upsert(cur);mode='edit';jump(result);}}
 function finishEdit(){editSnap=null;upsert(cur);jump(result);}
 
 /* ---------- income tax check ---------- */
-var FEDB=[[12400,.10],[50400,.12],[105700,.22],[201775,.24],[256225,.32],[640600,.35],[Infinity,.37]],FED_STD=16100;
-var CAB=[[11079,.01],[26264,.02],[41452,.04],[57542,.06],[72724,.08],[371479,.093],[445771,.103],[742953,.113],[Infinity,.123]],CA_STD=5706,CA_CREDIT=153;
+var STATUS=[['single','Single'],['mfj','Married filing jointly'],['mfs','Married filing separately'],['hoh','Head of household']];
+var FEDT={single:{b:[[12400,.10],[50400,.12],[105700,.22],[201775,.24],[256225,.32],[640600,.35],[Infinity,.37]],std:16100},
+  mfj:{b:[[24800,.10],[100800,.12],[211400,.22],[403550,.24],[512450,.32],[768700,.35],[Infinity,.37]],std:32200},
+  mfs:{b:[[12400,.10],[50400,.12],[105700,.22],[201775,.24],[256225,.32],[384350,.35],[Infinity,.37]],std:16100},
+  hoh:{b:[[17700,.10],[67450,.12],[105700,.22],[201750,.24],[256200,.32],[640600,.35],[Infinity,.37]],std:24150}};
+var CAS=[[11079,.01],[26264,.02],[41452,.04],[57542,.06],[72724,.08],[371479,.093],[445771,.103],[742953,.113],[Infinity,.123]];
+var CAT={single:{b:CAS,std:5706,cr:153},mfs:{b:CAS,std:5706,cr:153},
+  mfj:{b:[[22158,.01],[52528,.02],[82904,.04],[115084,.06],[145448,.08],[742958,.093],[891542,.103],[1485906,.113],[Infinity,.123]],std:11412,cr:306},
+  hoh:{b:[[22173,.01],[52530,.02],[67716,.04],[83805,.06],[98990,.08],[505208,.093],[606251,.103],[1010417,.113],[Infinity,.123]],std:11412,cr:153}};
+var STATES=[['AL','Alabama'],['AK','Alaska'],['AZ','Arizona'],['AR','Arkansas'],['CA','California'],['CO','Colorado'],['CT','Connecticut'],['DE','Delaware'],['DC','District of Columbia'],['FL','Florida'],['GA','Georgia'],['HI','Hawaii'],['ID','Idaho'],['IL','Illinois'],['IN','Indiana'],['IA','Iowa'],['KS','Kansas'],['KY','Kentucky'],['LA','Louisiana'],['ME','Maine'],['MD','Maryland'],['MA','Massachusetts'],['MI','Michigan'],['MN','Minnesota'],['MS','Mississippi'],['MO','Missouri'],['MT','Montana'],['NE','Nebraska'],['NV','Nevada'],['NH','New Hampshire'],['NJ','New Jersey'],['NM','New Mexico'],['NY','New York'],['NC','North Carolina'],['ND','North Dakota'],['OH','Ohio'],['OK','Oklahoma'],['OR','Oregon'],['PA','Pennsylvania'],['RI','Rhode Island'],['SC','South Carolina'],['SD','South Dakota'],['TN','Tennessee'],['TX','Texas'],['UT','Utah'],['VT','Vermont'],['VA','Virginia'],['WA','Washington'],['WV','West Virginia'],['WI','Wisconsin'],['WY','Wyoming']];
+var NOTAX=['AK','FL','NV','NH','SD','TN','TX','WA','WY'];
+function stateName(c){for(var i=0;i<STATES.length;i++)if(STATES[i][0]===c)return STATES[i][1];return 'your state';}
+function statusName(k){for(var i=0;i<STATUS.length;i++)if(STATUS[i][0]===k)return STATUS[i][1];return 'Single';}
 function bracketTax(x,B){var t=0,lo=0;for(var i=0;i<B.length;i++){var hi=B[i][0];if(x>lo)t+=(Math.min(x,hi)-lo)*B[i][1];lo=hi;}return t;}
 function yearFrac(dateStr){var d=new Date(dateStr+'T12:00:00'),y=d.getFullYear(),a=new Date(y,0,1,12),z=new Date(y+1,0,1,12);
   return (Math.round((d-a)/864e5)+1)/Math.round((z-a)/864e5);}
-function taxCalc(t){var per=freqOf(t.freq).mult*12,wages=t.gross*per,inc=wages+(t.other||0),frac=yearFrac(t.date);
-  var fed=bracketTax(Math.max(0,inc-FED_STD),FEDB),st=Math.max(0,bracketTax(Math.max(0,inc-CA_STD),CAB)-CA_CREDIT);
-  var pf=t.fedYtd/frac,ps=t.stYtd/frac,due=fed+st,diff=due-(pf+ps);
-  return {inc:inc,fed:fed,st:st,pf:pf,ps:ps,due:due,diff:diff,frac:frac,close:Math.abs(diff)<Math.max(200,0.1*due)};}
+function taxCalc(t){var st0=t.status||'single',F=FEDT[st0]||FEDT.single,per=freqOf(t.freq).mult*12,wages=t.gross*per,inc=wages+(t.other||0),frac=yearFrac(t.date);
+  var item=(t.mortgage||0)+(t.propTax||0),fedDed=Math.max(F.std,item),fedItem=item>F.std;
+  var fed=bracketTax(Math.max(0,inc-fedDed),F.b);
+  var code=t.state||'CA',kind=code==='CA'?'ca':(NOTAX.indexOf(code)>=0?'none':'unknown'),st=0,stItem=false;
+  if(kind==='ca'){var C=CAT[st0]||CAT.single,cd=Math.max(C.std,item);stItem=item>C.std;st=Math.max(0,bracketTax(Math.max(0,inc-cd),C.b)-C.cr);}
+  var pf=t.fedYtd/frac,ps=t.stYtd/frac,due=fed+st,paid=pf+(kind==='unknown'?0:ps),diff=due-paid;
+  return {inc:inc,fed:fed,st:st,pf:pf,ps:ps,due:due,diff:diff,frac:frac,kind:kind,fedItem:fedItem,stItem:stItem,fedDed:fedDed,close:Math.abs(diff)<Math.max(200,0.1*due)};}
 function taxIntro(){app.append(h('div',{class:'card'},h('p',{class:'eyebrow',text:'Income tax'}),h('h2',{text:'Want to check your income tax?'}),
   h('p',{class:'hint',text:'Have your most recent pay stub handy. I will see if you may owe money when you file your taxes.'}),
   h('div',{class:'stack'},h('button',{onclick:function(){go(taxForm);},text:'Yes, check my taxes'}),h('button',{class:'ghost',onclick:function(){adv(0);},text:'Skip for now'}),h('button',{class:'ghost',onclick:back,text:'Back'}))));}
 function taxForm(){var t=cur.tax,inc0=null;
   cur.incomes.forEach(function(i){if(!inc0&&i.gross>0)inc0=i;});if(!inc0)inc0=cur.incomes[0]||null;
-  var v=t||{date:inc0?inc0.stubDate:'',gross:inc0?inc0.gross:0,net:inc0&&inc0.gross>0?inc0.amount:0,fedTax:0,fedYtd:0,stTax:0,stYtd:0,freq:inc0?inc0.freq:'month',other:0};
+  var v=t||{date:inc0?inc0.stubDate:'',gross:inc0?inc0.gross:0,net:inc0&&inc0.gross>0?inc0.amount:0,fedTax:0,fedYtd:0,stTax:0,stYtd:0,freq:inc0?inc0.freq:'month',other:0,status:'single',state:'CA',mortgage:0,propTax:0};
   var err=h('div',{class:'err',role:'alert'});
   var di=h('input',{type:'date',id:'x-date',value:v.date||''});
-  var F=[['gross','Gross pay (this check)'],['net','Net pay, take-home (this check)'],['fedTax','Federal income tax (this check)'],['fedYtd','Federal income tax to date (year to date)'],['stTax','California income tax (this check)'],['stYtd','California income tax to date (year to date)']];
+  var F=[['gross','Gross pay (this check)'],['net','Net pay, take-home (this check)'],['fedTax','Federal income tax (this check)'],['fedYtd','Federal income tax to date (year to date)'],['stTax','State income tax (this check)'],['stYtd','State income tax to date (year to date)']];
   var ins={};F.forEach(function(f){ins[f[0]]=numIn('x-'+f[0],v[f[0]]||'','0');});
   var fs=h('select',{id:'x-freq'},FREQ.map(function(q){return h('option',{value:q.k,selected:q.k===v.freq,text:q.label});}));
-  var oi=numIn('x-other',v.other||'','0');
+  var ss=h('select',{id:'x-status'},STATUS.map(function(q){return h('option',{value:q[0],selected:q[0]===(v.status||'single'),text:q[1]});}));
+  var st=h('select',{id:'x-state'},STATES.map(function(q){return h('option',{value:q[0],selected:q[0]===(v.state||'CA'),text:q[1]});}));
+  var oi=numIn('x-other',v.other||'','0'),mi=numIn('x-mort',v.mortgage||'','0'),pi=numIn('x-prop',v.propTax||'','0');
+  var hasM=h('select',{id:'x-hasm'},[['no','No, I rent or own with no mortgage'],['yes','Yes, I pay a home mortgage']].map(function(o){return h('option',{value:o[0],selected:o[0]===((v.mortgage>0||v.propTax>0)?'yes':'no'),text:o[1]});}));
+  var mbox=h('div',{},h('div',{class:'fld'},h('label',{for:'x-mort',text:'Mortgage interest you pay for the whole year'}),h('p',{class:'hint',style:'margin:0 0 6px',text:'Your lender sends a year-end statement (Form 1098) that shows it.'}),mi),
+    h('div',{class:'fld'},h('label',{for:'x-prop',text:'Property tax you pay for the year (optional)'}),pi));
+  function showM(){mbox.style.display=hasM.value==='yes'?'':'none';}hasM.onchange=showM;showM();
   var form=h('form',{class:'card',onsubmit:function(ev){ev.preventDefault();
-    var o={date:di.value,freq:fs.value},yr=new Date().getFullYear();
+    var o={date:di.value,freq:fs.value,status:ss.value,state:st.value},yr=new Date().getFullYear();
     if(!o.date){err.textContent='Type the pay date from the stub.';di.focus();return;}
     var dd=new Date(o.date+'T12:00:00');
     if(dd.getFullYear()!==yr){err.textContent='Use a pay stub dated '+yr+'. The "to date" numbers must be for this year.';di.focus();return;}
     if(dd.getTime()>Date.now()+864e5){err.textContent='That date is in the future. Check the date on the stub.';di.focus();return;}
     for(var k=0;k<F.length;k++){var key=F[k][0],raw=ins[key].value.trim(),n=parseNum(raw===''&&key!=='gross'&&key!=='net'?'0':raw);
       if(n===null){err.textContent='Type just numbers for "'+F[k][1].toLowerCase()+'", like 50 or 50.50. Type 0 if the stub shows none.';ins[key].focus();return;}o[key]=n;}
-    var ro=oi.value.trim(),on=parseNum(ro===''?'0':ro);if(on===null){err.textContent='Type just numbers for other income, like 5000.';oi.focus();return;}o.other=on;
+    var on=parseNum(oi.value.trim()===''?'0':oi.value);if(on===null){err.textContent='Type just numbers for other income, like 5000.';oi.focus();return;}o.other=on;
+    o.mortgage=0;o.propTax=0;
+    if(hasM.value==='yes'){var mn=parseNum(mi.value.trim()===''?'0':mi.value),pn=parseNum(pi.value.trim()===''?'0':pi.value);
+      if(mn===null||pn===null){err.textContent='Type just numbers for mortgage interest and property tax.';mi.focus();return;}o.mortgage=mn;o.propTax=pn;}
     if(o.gross<=0||o.net<=0){err.textContent='Gross pay and take-home pay must be more than 0.';ins.gross.focus();return;}
     if(o.net>o.gross){err.textContent='Take-home (net) pay is the smaller number. It cannot be more than gross pay.';ins.net.focus();return;}
     if(o.fedYtd<o.fedTax){err.textContent='Federal tax to date cannot be smaller than federal tax on this check.';ins.fedYtd.focus();return;}
-    if(o.stYtd<o.stTax){err.textContent='California tax to date cannot be smaller than California tax on this check.';ins.stYtd.focus();return;}
+    if(o.stYtd<o.stTax){err.textContent='State tax to date cannot be smaller than state tax on this check.';ins.stYtd.focus();return;}
     cur.tax=o;go(taxResult);}},
-    h('p',{class:'eyebrow',text:'Income tax'}),h('h2',{text:'Read your pay stub'}),h('p',{class:'hint',text:'Use your most recent stub. Type 0 for anything the stub does not show.'}),
+    h('p',{class:'eyebrow',text:'Income tax'}),h('h2',{text:'About you'}),
+    h('div',{class:'fld'},h('label',{for:'x-status',text:'How will you file your taxes?'}),ss),
+    h('div',{class:'fld'},h('label',{for:'x-state',text:'Which state do you live in?'}),st),
+    h('div',{class:'fld'},h('label',{for:'x-hasm',text:'Do you pay a home mortgage?'}),hasM),mbox,
+    h('h2',{text:'Read your pay stub'}),h('p',{class:'hint',text:'Use your most recent stub. Type 0 for anything the stub does not show.'}),
     h('div',{class:'fld'},h('label',{for:'x-date',text:'Pay date'}),di),
     F.map(function(f){return h('div',{class:'fld'},h('label',{for:'x-'+f[0],text:f[1]}),ins[f[0]]);}),
     h('div',{class:'fld'},h('label',{for:'x-freq',text:'How often are you paid?'}),fs),
-    h('div',{class:'fld'},h('label',{for:'x-other',text:'Other taxable income this year (optional)'}),h('p',{class:'hint',style:'margin:0 0 6px',text:'Another job or other money that gets taxed, for the whole year. SSI is not taxed. Leave blank if none.'}),oi),
+    h('div',{class:'fld'},h('label',{for:'x-other',text:'Other taxable income this year (optional)'}),h('p',{class:'hint',style:'margin:0 0 6px',text:'Another job, your spouse\'s pay, or other money that gets taxed, for the whole year. SSI is not taxed. Leave blank if none.'}),oi),
     err,h('div',{class:'row'},h('button',{type:'button',class:'ghost',onclick:back,text:'Back'}),h('button',{type:'submit',text:'See my estimate'})));
   app.append(form);}
-function taxResult(){var t=cur.tax,c=taxCalc(t);var owe=c.diff>0;
+function taxResult(){var t=cur.tax,c=taxCalc(t);var owe=c.diff>0,sn=stateName(t.state||'CA');
   app.append(h('h1',{text:'Income tax estimate'}));
   if(c.close)app.append(h('div',{class:'banner',style:'background:var(--orange)',role:'status',text:'Too close to call: about '+money(Math.abs(c.diff))+' either way'}));
   else app.append(h('div',{class:'banner '+(owe?'bad':'good'),role:'status',text:owe?'You may OWE about '+money(c.diff):'You may GET BACK about '+money(-c.diff)}));
   var warns=[];
+  if(c.kind==='unknown')warns.push('I can only work out the tax owed for California and states with no income tax. For '+sn+' this estimate counts federal tax only, so ask a tax preparer about '+sn+' tax.');
   if(c.frac<0.1)warns.push('The year has just started, so this guess is rough. Check again with a later pay stub.');
   if(c.close)warns.push('Your tax withheld is close to your estimated tax, so small changes could flip the answer.');
   if(t.other>0)warns.push('Tax withheld from your other income is not counted here, so your real answer may be better.');
-  warns.push('This is a guess for one year, not tax advice. It does not include credits, deductions or pre-tax savings. Ask a trusted adult or a tax preparer before you file.');
-  app.append(h('div',{class:'card'},
+  if(t.mortgage>0||t.propTax>0)warns.push(c.fedItem?'Your mortgage interest and property tax are more than the standard deduction, so I used them instead.':'The standard deduction is bigger than your mortgage interest and property tax, so I used the standard deduction.');
+  warns.push('This is a guess for one year, not tax advice. It does not include credits, other deductions or pre-tax savings. Ask a trusted adult or a tax preparer before you file.');
+  var rows=[h('div',{class:'money'},h('span',{text:'Filing status'}),h('b',{text:statusName(t.status)})),
     h('div',{class:'money'},h('span',{text:'Pay for the year (estimate)'}),h('b',{text:money(c.inc)})),
     h('div',{class:'money'},h('span',{text:'Federal tax you will owe'}),h('b',{text:money(c.fed)})),
-    h('div',{class:'money'},h('span',{text:'Federal tax withheld by year end'}),h('b',{text:money(c.pf)})),
-    h('div',{class:'money'},h('span',{text:'California tax you will owe'}),h('b',{text:money(c.st)})),
-    h('div',{class:'money'},h('span',{text:'California tax withheld by year end'}),h('b',{text:money(c.ps)}))));
+    h('div',{class:'money'},h('span',{text:'Federal tax withheld by year end'}),h('b',{text:money(c.pf)}))];
+  if(c.kind==='ca')rows.push(h('div',{class:'money'},h('span',{text:'California tax you will owe'}),h('b',{text:money(c.st)})));
+  if(c.kind!=='none')rows.push(h('div',{class:'money'},h('span',{text:sn+' tax withheld by year end'}),h('b',{text:money(c.ps)})));
+  app.append(h('div',{class:'card'},rows));
   app.append(h('div',{class:'card'},warns.map(function(w){return h('p',{class:'warn',text:w});})));
   app.append(h('div',{class:'stack'},
     h('button',{class:'green',onclick:function(){if(mode==='edit')finishEdit();else adv(0);},text:'Done'}),
@@ -468,12 +516,33 @@ function planFor(cat){for(var i=0;i<cur.expenses.length;i++)if(cur.expenses[i].n
   for(var j=0;j<cur.extras.length;j++)if(cur.extras[j].name===cat)return cur.extras[j].amount;return 0;}
 function spentIn(cat,month){var t=0;cur.spent.forEach(function(x){if(x.cat===cat&&x.date.slice(0,7)===month)t+=x.amount;});return t;}
 function trackCats(){var o=[];cur.expenses.forEach(function(e,k){if(!(cur.hasCar===false&&isCar(k)))o.push(e.name);});cur.extras.forEach(function(e){if(o.indexOf(e.name)<0)o.push(e.name);});return o;}
+var MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+function monthLabel(k){return MN[Number(k.slice(5,7))-1]+' '+k.slice(0,4);}
+function sugData(){var cm=todayStr().slice(0,7),ms={};
+  cur.spent.forEach(function(x){var m=x.date.slice(0,7);if(m<cm)ms[m]=true;});
+  var ml=Object.keys(ms).sort().reverse();if(ml.length<2)return null;
+  var two=[ml[0],ml[1]];if(cur.sugSeen&&cur.sugSeen>=two[0])return null;
+  var tot={},ok=trackCats();cur.spent.forEach(function(x){if(two.indexOf(x.date.slice(0,7))>=0)tot[x.cat]=(tot[x.cat]||0)+x.amount;});
+  var rows=[];Object.keys(tot).forEach(function(cat){if(ok.indexOf(cat)<0)return;var nw=Math.ceil(tot[cat]/2*1.1),old=planFor(cat);if(nw!==old)rows.push({cat:cat,old:old,nw:nw});});
+  return rows.length?{months:two,rows:rows}:null;}
+function sugCard(){var d=sugData();if(!d)return null;
+  return h('div',{class:'card'},h('p',{class:'eyebrow',text:'Idea'}),h('h2',{text:'Update your budget?'}),
+    h('p',{class:'hint',text:'You have tracked '+monthLabel(d.months[1])+' and '+monthLabel(d.months[0])+'. I can set each budget amount to what you really spend, plus 10% extra room.'}),
+    h('button',{onclick:function(){go(sugScreen);},text:'See my suggested budget'}));}
+function sugScreen(){var d=sugData();if(!d){jump(result);return;}
+  app.append(h('div',{class:'card'},h('p',{class:'eyebrow',text:'Suggestion'}),h('h2',{text:'Suggested monthly amounts'}),
+    h('p',{class:'hint',text:'Based on your average spending in '+monthLabel(d.months[1])+' and '+monthLabel(d.months[0])+', plus 10%.'}),
+    h('div',{},d.rows.map(function(r){return h('div',{class:'money'},h('span',{text:r.cat+': '+money(r.old)+' to'}),h('b',{text:money(r.nw)}));})),
+    h('div',{class:'stack',style:'margin-top:12px'},
+      h('button',{class:'green',onclick:function(){d.rows.forEach(function(r){var k=catIndex(r.cat);if(k>=0)cur.expenses[k].amount=r.nw;else cur.extras.forEach(function(e){if(e.name===r.cat)e.amount=r.nw;});});cur.sugSeen=d.months[0];editSnap=null;upsert(cur);mode='edit';jump(result);},text:'Update my whole budget'}),
+      h('button',{class:'ghost',onclick:function(){cur.sugSeen=d.months[0];upsert(cur);jump(result);},text:'No thanks'}))));}
 function trackHome(){var mo=todayStr().slice(0,7),rows=[];
   trackCats().forEach(function(c){var p=planFor(c),sp=spentIn(c,mo);if(p>0||sp>0)rows.push({c:c,p:p,sp:sp});});
   app.append(h('h1',{text:'Spending tracker'}));
   app.append(h('div',{class:'card'},h('p',{class:'eyebrow',text:'This month'}),
     rows.length?h('div',{},rows.map(function(r){var left=r.p-r.sp;return h('div',{class:'money'},h('span',{text:r.c+': spent '+money(r.sp)+' of '+money(r.p)}),h('b',{text:left>=0?money(left)+' left':money(-left)+' over'}));})):h('p',{class:'hint',text:'Nothing tracked yet. Add what you spend and I will show what is left.'}),
     h('div',{class:'stack',style:'margin-top:12px'},h('button',{onclick:function(){go(trackAdd);},text:'Add something I spent'}))));
+  var sc=sugCard();if(sc)app.append(sc);
   var recent=cur.spent.slice(-8).reverse();
   if(recent.length)app.append(h('div',{class:'card'},h('p',{class:'eyebrow',text:'Latest'}),h('ul',{class:'list'},recent.map(function(x){
     return h('li',{class:'item'},h('span',{text:x.date+': '+x.cat+', '+money(x.amount)+' '}),h('button',{class:'ghost',onclick:function(){var k=cur.spent.indexOf(x);if(k>=0)cur.spent.splice(k,1);upsert(cur);show([trackHome]);},text:'Remove'}));}))));
@@ -514,6 +583,7 @@ function result(){
   if(cur.hasCar===true){var mi=catIndex('Car maintenance');if(mi>=0&&cur.expenses[mi].amount<25)app.append(h('div',{class:'card warn'},h('p',{text:'Tip: you have a car. Plan to set aside about $300 a year for oil changes and repairs. That is $25 a month, and your plan has '+money(cur.expenses[mi].amount)+'.'})));}
   app.append(h('div',{class:'card'},h('h2',{text:'Spending tracker'}),h('p',{class:'hint',text:'Write down what you spend and see what is left in each part of your monthly budget.'}),
     h('button',{class:'ghost',onclick:function(){go(trackHome);},text:'Track my spending'})));
+  var sc2=sugCard();if(sc2)app.append(sc2);
   if(cur.incomes.length){var tc=cur.tax?taxCalc(cur.tax):null;
     app.append(h('div',{class:'card'},h('h2',{text:'Income tax'}),
       tc?h('p',{class:tc.close?'warn':'',text:tc.close?'Too close to call. You may owe or get back about '+money(Math.abs(tc.diff))+'.':(tc.diff>0?'You may OWE about '+money(tc.diff)+' when you file.':'You may GET BACK about '+money(-tc.diff)+' when you file.')}):h('p',{class:'hint',text:'Use your pay stub to see if you may owe income tax.'}),
@@ -612,7 +682,7 @@ function debtGraph(i){
     h('button',{class:'ghost',onclick:back,text:'Back'})));}
 
 /* ---------- backup ---------- */
-function backupJson(){return JSON.stringify({app:'JuniorBudget',version:1,saved:new Date().toISOString(),budgets:db},null,2);}
+function backupJson(){return JSON.stringify({app:'SimpleBudget',version:1,saved:new Date().toISOString(),budgets:db},null,2);}
 function backupScreen(){
   hist=[];view=[backupScreen];app.textContent='';
   var status=h('p',{class:'note',role:'status'});
@@ -622,12 +692,12 @@ function backupScreen(){
   function loadText(t){try{var o=JSON.parse(t);var list=Array.isArray(o)?o:(o&&Array.isArray(o.budgets)?o.budgets:(o&&o.incomes?[o]:null));
       if(!list)throw new Error('x');var n=0;list.forEach(function(b){var c=clean(b);if(c){upsert(c);n++;}});
       out.value=backupJson();status.textContent=n?('Loaded '+n+' budget'+(n===1?'':'s')+'.'):'That backup had no budgets in it.';}
-    catch(e){status.textContent='That does not look like a Junior\'s Budget backup.';}}
+    catch(e){status.textContent='That does not look like a Simple Budget backup.';}}
   file.addEventListener('change',function(){var f=file.files&&file.files[0];if(!f)return;var rd=new FileReader();rd.onload=function(){loadText(String(rd.result));};rd.readAsText(f);});
   app.append(h('h1',{text:'Backups'}),h('p',{class:'hint',text:'A backup is a copy of all your budgets. Keep one safe in case this phone clears its data.'}),
     h('div',{class:'card'},h('h2',{text:'Save a backup'}),
       h('div',{class:'stack'},
-        h('button',{onclick:function(){try{var bl=new Blob([backupJson()],{type:'application/json'});var u=URL.createObjectURL(bl);var a=document.createElement('a');a.href=u;a.download='juniors-budget-backup.json';document.body.append(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u);},2000);status.textContent='If a file did not download, use Copy backup text instead.';}catch(e){status.textContent='Download is blocked here. Use Copy backup text instead.';}},text:'Save a file to my phone'}),
+        h('button',{onclick:function(){try{var bl=new Blob([backupJson()],{type:'application/json'});var u=URL.createObjectURL(bl);var a=document.createElement('a');a.href=u;a.download='simple-budget-backup.json';document.body.append(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u);},2000);status.textContent='If a file did not download, use Copy backup text instead.';}catch(e){status.textContent='Download is blocked here. Use Copy backup text instead.';}},text:'Save a file to my phone'}),
         h('button',{class:'ghost',onclick:function(){out.focus();out.select();var done=function(){status.textContent='Copied. Paste it into the Notes app to keep it.';};
           if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(out.value).then(done,function(){status.textContent='Text is selected. Tap Copy in the pop-up.';});}else{status.textContent='Text is selected. Tap Copy in the pop-up.';}},text:'Copy backup text'}),
         out)),
