@@ -349,7 +349,7 @@ function helperScreen(){
       h('ul',{class:'list'},h('li',{text:'If the home screen icon is used, turn Simple mode on in the icon, not just in Safari. The icon keeps its own settings and budgets.'}),h('li',{text:'If his hours change, type the NET PAY from his most recent stub, or an average.'}),h('li',{text:'Car loan payments go under Debts, never under Expenses.'}),h('li',{text:'Bill reminders are in the separate Simple Bills app. Set those up for him.'}))),
     h('button',{class:'ghost',style:'width:100%',onclick:home,text:'Back'}));}
 var BILLS_URL='https://gindisandbox.github.io/Simple-Bills/';var FUTURE_URL='https://gindisandbox.github.io/Saving-for-Future/';
-var VERSION='1.6';
+var VERSION='1.8';
 var SIMPLE_LITE=true; /* N: lighter Simple results screen (set true to try) */
 function home(){
   hist=[];view=null;cur=null;editSnap=null;app.textContent='';
@@ -794,11 +794,11 @@ function lkRand(){var a=new Uint8Array(16);crypto.getRandomValues(a);return lkHe
 function lkPanel(children){var old=document.getElementById('lockov');if(old)old.remove();
   var ov=h('div',{id:'lockov',role:'dialog','aria-modal':'true',style:'position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:var(--bg,#f5f6f2);overflow:auto;padding:16px'},
     h('div',{style:'max-width:480px;margin:0 auto'},children));
-  document.body.append(ov);try{app.setAttribute('inert','');}catch(e){}window.scrollTo(0,0);return ov;}
-function lkClose(){var o=document.getElementById('lockov');if(o)o.remove();lkOpen=false;try{app.removeAttribute('inert');}catch(e){}}
+  document.body.append(ov);try{app.setAttribute('inert','');app.style.visibility='hidden';}catch(e){}window.scrollTo(0,0);return ov;}
+function lkClose(){var o=document.getElementById('lockov');if(o)o.remove();lkOpen=false;try{app.removeAttribute('inert');app.style.visibility='';}catch(e){}}
 function lkErase(){try{var ks=[];for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&k.indexOf('simpleBudget.')===0)ks.push(k);}ks.forEach(function(k){localStorage.removeItem(k);});}catch(e){}
   location.reload();}
-function lkForgot(back){lkPanel([h('div',{class:'card warn'},h('h2',{text:'Forgot your PIN?'}),
+function lkForgot(back,title){lkPanel([h('div',{class:'card warn'},h('h2',{text:title||'Forgot your PIN?'}),
   h('p',{class:'hint',text:'The only way back in is to erase everything this app saved on this phone, including the PIN. If you saved a backup file, you can load it again afterwards. Nobody can recover the PIN for you.'}),
   h('div',{class:'stack'},h('button',{class:'danger',onclick:lkErase,text:'Erase everything on this phone'}),h('button',{class:'ghost',onclick:back,text:'No, go back'})))]);}
 function lkUnlockScreen(done){
@@ -817,7 +817,7 @@ function lkUnlockScreen(done){
   inp.addEventListener('keydown',function(e){if(e.key==='Enter')go();});
   show();}
 function lkBroken(why){lkOpen=true;lkPanel([h('div',{class:'card warn'},h('h1',{text:'Simple Budget'}),h('h2',{text:'This app is locked'}),
-  h('p',{class:'hint',text:why}),h('div',{class:'stack'},h('button',{class:'ghost',onclick:function(){location.reload();},text:'Try again'}),h('button',{class:'danger',onclick:lkErase,text:'Erase everything on this phone'})))]);}
+  h('p',{class:'hint',text:why}),h('div',{class:'stack'},h('button',{class:'ghost',onclick:function(){location.reload();},text:'Try again'}),h('button',{class:'danger',onclick:function(){lkForgot(function(){lkBroken(why);},'Erase everything on this phone?');},text:'Erase everything on this phone'})))]);}
 function lkGate(start){
   if(!lkPresent()){start();return;}
   if(!lkGet()){lkBroken('The lock settings on this phone are damaged, so your PIN cannot be checked. The only way in is to erase what this app saved on this phone. If you saved a backup file, you can load it again afterwards.');return;}
