@@ -1,6 +1,6 @@
-// Junior's Budget service worker (v2.7): lets the app open with no internet.
+// Simple Budget service worker (v1.5): lets the app open with no internet.
 // Same-site files are cached. The page is fetched fresh when online (so updates arrive) and falls back to the saved copy when offline or slow.
-var CACHE = 'junior-budget-v2.7';
+var CACHE = 'simple-budget-v1.6';
 var FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(FILES); }).then(function () { return self.skipWaiting(); }));
